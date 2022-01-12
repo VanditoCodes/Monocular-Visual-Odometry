@@ -42,55 +42,55 @@ class VisualOdometry:
         self.focal = cam.fx
         self.pp = (cam.cx, cam.cy)
         self.trueX, self.trueY, self.trueZ = 0, 0, 0
-        self.detector = cv2.FastFeatureDetector_create(threshdold = 25, nonmaxSuppression= True)
+        self.detector = cv2.FastFeatureDetector_create(threshold = 25, nonmaxSuppression= True)
         self.annotations = annotations
         
-def getAbsoluteScale (self,frame_id):
-    ss = self.annotations[frame_id-1].strip().split(' ')
-    x_prev = float(ss[3])
-    y_prev = float(ss[7])
-    z_prev = float(ss[11])
-    ss = self.annotations[frame_id].strip().split()
-    x = float(ss[3])
-    y = float(ss[7])
-    z = float(ss[11])
-    self.trueX, self.trueY, self.trueZ = x, y, z
-    return np.sqrt((x - x_prev)*(x - x_prev) + (y - y_prev)*(y - y_prev) + (z - z_prev)*(z - z_prev))
+    def getAbsoluteScale (self,frame_id):
+        ss = np.array(self.annotations.oxts[frame_id-1].T_w_imu).dot(np.linalg.inv(np.array(self.annotations.calib.T_cam0_imu)))
+        x_prev = float(ss[0,3])
+        y_prev = float(ss[1,3])
+        z_prev = float(ss[2,3])
+        ss = np.array(self.annotations.oxts[frame_id].T_w_imu).dot(np.linalg.inv(np.array(self.annotations.calib.T_cam0_imu)))
+        x = float(ss[0,3])
+        y = float(ss[1,3])
+        z = float(ss[2,3])
+        self.trueX, self.trueY, self.trueZ = x, y, z
+        return np.sqrt((x - x_prev)*(x - x_prev) + (y - y_prev)*(y - y_prev) + (z - z_prev)*(z - z_prev))
 
-def processFirstFrame(self):
-		self.px_ref = self.detector.detect(self.new_frame)
-		self.px_ref = np.array([x.pt for x in self.px_ref], dtype=np.float32)
-		self.frame_stage = Frame_Second
+    def processFirstFrame(self):
+            self.px_ref = self.detector.detect(self.new_frame)
+            self.px_ref = np.array([x.pt for x in self.px_ref], dtype=np.float32)
+            self.frame_stage = Frame_Second
 
-def processSecondFrame(self):
-		self.px_ref, self.px_cur = featureTracking(self.last_frame, self.new_frame, self.px_ref)
-		E, mask = cv2.findEssentialMat(self.px_cur, self.px_ref, focal=self.focal, pp=self.pp, method=cv2.RANSAC, prob=0.999, threshold=1.0)
-		_, self.cur_R, self.cur_t, mask = cv2.recoverPose(E, self.px_cur, self.px_ref, focal=self.focal, pp = self.pp)
-		self.frame_stage =Frame_Default
-		self.px_ref = self.px_cur
+    def processSecondFrame(self):
+            self.px_ref, self.px_cur = featureTracking(self.last_frame, self.new_frame, self.px_ref)
+            E, mask = cv2.findEssentialMat(self.px_cur, self.px_ref, focal=self.focal, pp=self.pp, method=cv2.RANSAC, prob=0.999, threshold=1.0)
+            _, self.cur_R, self.cur_t, mask = cv2.recoverPose(E, self.px_cur, self.px_ref, focal=self.focal, pp = self.pp)
+            self.frame_stage =Frame_Default
+            self.px_ref = self.px_cur
 
 
-def processFrame(self, frame_id):
-		self.px_ref, self.px_cur = featureTracking(self.last_frame, self.new_frame, self.px_ref)
-		E, mask = cv2.findEssentialMat(self.px_cur, self.px_ref, focal=self.focal, pp=self.pp, method=cv2.RANSAC, prob=0.999, threshold=1.0)
-		_, R, t, mask = cv2.recoverPose(E, self.px_cur, self.px_ref, focal=self.focal, pp = self.pp)
-		absolute_scale = self.getAbsoluteScale(frame_id)
-		if(absolute_scale > 0.1):
-			self.cur_t = self.cur_t + absolute_scale*self.cur_R.dot(t) 
-			self.cur_R = R.dot(self.cur_R)
-		if(self.px_ref.shape[0] < KMinFeature):
-			self.px_cur = self.detector.detect(self.new_frame)
-			self.px_cur = np.array([x.pt for x in self.px_cur], dtype=np.float32)
-		self.px_ref = self.px_cur
+    def processFrame(self, frame_id):
+            self.px_ref, self.px_cur = featureTracking(self.last_frame, self.new_frame, self.px_ref)
+            E, mask = cv2.findEssentialMat(self.px_cur, self.px_ref, focal=self.focal, pp=self.pp, method=cv2.RANSAC, prob=0.999, threshold=1.0)
+            _, R, t, mask = cv2.recoverPose(E, self.px_cur, self.px_ref, focal=self.focal, pp = self.pp)
+            absolute_scale = self.getAbsoluteScale(frame_id)
+            if(absolute_scale > 0.1):
+                self.cur_t = self.cur_t + absolute_scale*self.cur_R.dot(t) 
+                self.cur_R = R.dot(self.cur_R)
+            if(self.px_ref.shape[0] < KMinFeature):
+                self.px_cur = self.detector.detect(self.new_frame)
+                self.px_cur = np.array([x.pt for x in self.px_cur], dtype=np.float32)
+            self.px_ref = self.px_cur
 
-    
-def update(self, img, frame_id):
-		assert(img.ndim==2 and img.shape[0]==self.cam.height and img.shape[1]==self.cam.width), "Frame: provided image has not the same size as the camera model or image is not grayscale"
-		self.new_frame = img
-		if(self.frame_stage ==Frame_Default):
-			self.processFrame(frame_id)
-		elif(self.frame_stage == Frame_Second):
-			self.processSecondFrame()
-		elif(self.frame_stage == Frame_First):
-			self.processFirstFrame()
-		self.last_frame = self.new_frame
+        
+    def update(self, img, frame_id):
+            assert(img.ndim==2 and img.shape[0]==self.cam.height and img.shape[1]==self.cam.width), "Frame: provided image has not the same size as the camera model or image is not grayscale"
+            self.new_frame = img
+            if(self.frame_stage ==Frame_Default):
+                self.processFrame(frame_id)
+            elif(self.frame_stage == Frame_Second):
+                self.processSecondFrame()
+            elif(self.frame_stage == Frame_First):
+                self.processFirstFrame()
+            self.last_frame = self.new_frame
